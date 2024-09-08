@@ -12,6 +12,8 @@ class Wordware:
             if api_key is None:
                 raise ValueError("Add WORDWARE_API_KEY")
         # when endpoint for publish_id/describe is added, prompt_id can be replaced with publish_id    
+        # additionally some information on the version would allow the user to pass it as a default arugment as use the most 
+        # updated one to date as the default
         r1 = requests.get(f"https://app.wordware.ai/api/prompt/{prompt_id}/describe",
                       headers={"Authorization": f"Bearer {api_key}"})
         response = r1.json()
@@ -22,6 +24,7 @@ class Wordware:
 
         self.api_key = api_key
         self.prompt_id = prompt_id
+
 
         self.publish_id = publish_id
         # this will grab from the official published version
@@ -40,7 +43,7 @@ class Wordware:
     def describe(self,):
         return self.describe_info
 
-    def run(self, inputs: Dict={}, **kwargs):
+    def run(self, inputs: Dict={}, version: Union[str, None]=None,  **kwargs):
         for key, value in kwargs.items():
             inputs[key] = value
         input_keys = set(inputs.keys())
@@ -53,16 +56,40 @@ class Wordware:
             print(repr(e))
             print(f"Excluded arugments", excluded)
             print(f"Extra arguments", extra)
-        
-        r = requests.post(f"https://app.wordware.ai/api/prompt/{self.prompt_id}/run",
+        print("Inputs: ", inputs)
+        r = requests.post(f"https://app.wordware.ai/api/released-app/{self.publish_id}/run",
                                         json={
-                        "inputs": inputs
+                        "inputs": inputs,
+                        "version": version,
                     },
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     stream=True
                     )
-    
-    
+        if r.status_code != 200:
+            print("Request failed with status code", r.status_code)
+            print(json.dumps(r.json(), indent=4))
+        else:
+            for line in r.iter_lines():
+                if line:
+                    content = json.loads(line.decode('utf-8'))
+                    print(content)
+                    value = content['value']
+                    # We can print values as they're generated
+                    if value['type'] == 'generation':
+                        if value['state'] == "start":
+                            print("\nNEW GENERATION -", value['label'])
+                        else:
+                            print("\nEND GENERATION -", value['label'])
+                    elif value['type'] == "chunk":
+                        print(value['value'], end="")
+                    elif value['type'] == "outputs":
+                        # Or we can read from the outputs at the end
+                        # Currently we include everything by ID and by label - this will likely change in future in a breaking
+                        # change but with ample warning
+                        print("\nFINAL OUTPUTS:")
+                        return (json.dumps(value, indent=4))
+        
+        
 
 
 
